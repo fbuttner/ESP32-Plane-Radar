@@ -12,9 +12,10 @@ constexpr int kCenterY = kSize / 2;
 constexpr int kGridOuterRadius = 107;
 
 /** N: offset from top edge (top_center, negative = up). */
-constexpr int kCardinalNorthOffsetY = -1;
+constexpr int kCardinalNorthOffsetY = 1;
 /** S: offset from bottom edge (bottom_center, positive = down). */
 constexpr int kCardinalSouthOffsetY = 3;
+constexpr int kCardinalRingRadius = 113;
 
 /** Gap between scale label right edge and outer ring on the east spoke (px). */
 constexpr int kScaleGapFromOuterRing = 6;

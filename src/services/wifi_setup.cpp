@@ -70,11 +70,16 @@ bool wifiLinkUp();
 constexpr int kCoordParamLen = 20;
 constexpr char kCoordInputAttrs[] =
     " type=\"number\" step=\"0.000001\"";
+constexpr int kOrientationParamLen = 4;
+constexpr char kOrientationInputAttrs[] =
+    " type=\"number\" step=\"1\" min=\"0\" max=\"359\"";
 
 WiFiManagerParameter s_param_lat("radar_lat", "Latitude (deg)", "0",
                                 kCoordParamLen, kCoordInputAttrs);
 WiFiManagerParameter s_param_lon("radar_lon", "Longitude (deg)", "0",
                                 kCoordParamLen, kCoordInputAttrs);
+WiFiManagerParameter s_param_orientation("radar_orientation", "Radar orientation (deg)", "0",
+                                kOrientationParamLen, kOrientationInputAttrs);
 
 char s_miles_checkbox_attrs[32] = "type=\"checkbox\"";
 WiFiManagerParameter s_param_miles("use_miles", "Display distances in miles", "T", 2,
@@ -87,10 +92,13 @@ WiFiManagerParameter s_param_runways("show_runways", "Show airport runways", "T"
 void refreshPortalParamDefaults() {
   char lat_buf[kCoordParamLen + 1];
   char lon_buf[kCoordParamLen + 1];
+  char lon_Orientation_buf[kOrientationParamLen + 1];
   snprintf(lat_buf, sizeof(lat_buf), "%.6f", services::location::lat());
   snprintf(lon_buf, sizeof(lon_buf), "%.6f", services::location::lon());
+  snprintf(lon_Orientation_buf, sizeof(lon_Orientation_buf), "%d", ui::radar::orientationOffset());
   s_param_lat.setValue(lat_buf, kCoordParamLen);
   s_param_lon.setValue(lon_buf, kCoordParamLen);
+  s_param_orientation.setValue(lon_Orientation_buf, kOrientationParamLen);
   snprintf(s_miles_checkbox_attrs, sizeof(s_miles_checkbox_attrs), "type=\"checkbox\"%s",
            ui::radar::useMiles() ? " checked" : "");
   s_param_miles.setValue("T", 2);
@@ -106,12 +114,14 @@ void onPortalParamsSaved() {
   }
   ui::radar::saveMilesFromPortal(s_param_miles.getValue());
   ui::radar::saveRunwaysFromPortal(s_param_runways.getValue());
+  ui::radar::saveOrientationFromPortal(s_param_orientation.getValue());
 }
 
 void attachPortalParams(WiFiManager& wm) {
   refreshPortalParamDefaults();
   wm.addParameter(&s_param_lat);
   wm.addParameter(&s_param_lon);
+  wm.addParameter(&s_param_orientation);
   wm.addParameter(&s_param_miles);
   wm.addParameter(&s_param_runways);
   wm.setSaveParamsCallback(onPortalParamsSaved);

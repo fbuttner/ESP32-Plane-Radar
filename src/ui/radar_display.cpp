@@ -201,11 +201,43 @@ constexpr float kKmPerDeg = 111.0f;
 
 void offsetKmFromCenter(float lat, float lon, float* dx_km, float* dy_km,
                         float* dist_km) {
-  *dx_km =
-      static_cast<float>(lon - services::location::lon()) * kKmPerDeg;
-  *dy_km =
-      static_cast<float>(lat - services::location::lat()) * kKmPerDeg;
-  *dist_km = sqrtf((*dx_km) * (*dx_km) + (*dy_km) * (*dy_km));
+  const uint16_t _deg = radar::orientationOffset();
+  const float _rad = static_cast<float>(_deg)* 0.01745329252f;
+  const float _cos = cosf(_rad);
+  const float _sin = sinf(_rad);
+
+  const float hor = static_cast<float>(lon - services::location::lon()) * kKmPerDeg;
+  const float ver = static_cast<float>(lat - services::location::lat()) * kKmPerDeg;
+
+  *dist_km = sqrtf(hor * hor + ver * ver);
+  
+  switch (_deg)
+  {
+  case 0:
+    *dx_km = hor;
+    *dy_km = ver;
+    break;
+  
+  case 90:
+    *dx_km = -ver;
+    *dy_km = hor;
+    break;
+  
+  case 180:
+    *dx_km = -hor;
+    *dy_km = -ver;
+    break;
+  
+  case 270:
+    *dx_km = ver;
+    *dy_km = -hor;
+    break;
+  
+  default:
+    *dx_km = hor * _cos + ver * _sin;
+    *dy_km = -hor * _sin + ver * _cos;
+    break;
+  }
 }
 
 float innerRingMaxKm() {
@@ -485,6 +517,7 @@ void drawAircraft() {
 
   const size_t n = services::adsb::aircraftCount();
   const services::adsb::Aircraft* planes = services::adsb::aircraftList();
+  const float radarOrientation = static_cast<float>(radar::orientationOffset());
 
   AircraftDrawItem items[services::adsb::kMaxAircraft];
   BeyondDotDrawItem dots[services::adsb::kMaxAircraft];
@@ -531,9 +564,9 @@ void drawAircraft() {
     const size_t i = items[d].index;
     const int x = items[d].x;
     const int y = items[d].y;
-    drawSpeedVector(x, y, planes[i].nose_deg, planes[i].track_deg,
+    drawSpeedVector(x, y, planes[i].nose_deg+radarOrientation, planes[i].track_deg+radarOrientation,
                     planes[i].gs_knots, radar::kColorTrackVector);
-    drawHeadingTriangle(x, y, planes[i].nose_deg, radar::kColorAircraft);
+    drawHeadingTriangle(x, y, planes[i].nose_deg+radarOrientation, radar::kColorAircraft);
   }
   for (size_t d = 0; d < draw_count; ++d) {
     const size_t i = items[d].index;
@@ -555,13 +588,6 @@ void applyScaleStyle() {
   } else {
     displayFontSetBitmap(*s_draw, s_scale_gfx);
   }
-}
-
-void drawCardinalLabel(const char* text, int x, int y, textdatum_t datum) {
-  applyCardinalStyle();
-  s_draw->setTextDatum(datum);
-  s_draw->setTextColor(radar::kColorLabel, radar::kColorBackground);
-  s_draw->drawString(text, x, y);
 }
 
 void drawScaleLabelWithBackground(const char* text, int x, int y) {
@@ -601,10 +627,19 @@ void drawRings(int cx, int cy, int outer_radius) {
 }
 
 void drawCrosshairs(int cx, int cy, int radius, uint16_t color) {
-  s_draw->drawWideLine(cx, cy - radius, cx, cy + radius,
+  const float _rad = static_cast<float>(radar::orientationOffset())* 0.01745329252f;
+  const float _cos = cosf(_rad);
+  const float _sin = sinf(_rad);
+
+  const int deltaCos = static_cast<int>(lroundf(radius * _cos));
+  const int deltaSin = static_cast<int>(lroundf(radius * _sin));
+
+  // West-East line
+  s_draw->drawWideLine(cx - deltaCos, cy + deltaSin, cx + deltaCos, cy - deltaSin,
                        radar::kGridStrokeHalfWidth, color);
-  s_draw->drawWideLine(cx - radius, cy, cx + radius, cy,
-                       radar::kGridStrokeHalfWidth, color);
+  // North-South line
+  s_draw->drawWideLine(cx - deltaSin, cy - deltaCos, cx + deltaSin, cy + deltaCos,
+                       radar::kGridStrokeHalfWidth, radar::kColorAircraft);
 }
 
 void drawCenterDot(int cx, int cy) {
@@ -612,15 +647,27 @@ void drawCenterDot(int cx, int cy) {
 }
 
 void drawCardinalLabels() {
+  const float _rad = static_cast<float>(radar::orientationOffset())* 0.01745329252f;
+  const float _cos = cosf(_rad);
+  const float _sin = sinf(_rad);
+
   const int cx = radar::kCenterX;
   const int cy = radar::kCenterY;
   const int edge = radar::kSize - 1;
+  const int radius = radar::kCardinalRingRadius;
 
-  drawCardinalLabel("N", cx, radar::kCardinalNorthOffsetY, textdatum_t::top_center);
-  drawCardinalLabel("S", cx, edge + radar::kCardinalSouthOffsetY,
-                    textdatum_t::bottom_center);
-  drawCardinalLabel("W", 0, cy, textdatum_t::middle_left);
-  drawCardinalLabel("E", edge, cy, textdatum_t::middle_right);
+  const int deltaCos = static_cast<int>(lroundf(radius * _cos));
+  const int deltaSin = static_cast<int>(lroundf(radius * _sin));
+
+  
+  applyCardinalStyle();
+  s_draw->setTextDatum(textdatum_t::middle_center);
+  s_draw->setTextColor(radar::kColorLabel, radar::kColorBackground);
+
+  s_draw->drawString("N", cx - deltaSin, cy - deltaCos + radar::kCardinalNorthOffsetY);
+  s_draw->drawString("S", cx + deltaSin, cy + deltaCos + radar::kCardinalSouthOffsetY);
+  s_draw->drawString("W", cx - deltaCos, cy + deltaSin);
+  s_draw->drawString("E", cx + deltaCos, cy - deltaSin);
 }
 
 int scaleLabelAnchorX(int cx, int outer_radius) {
@@ -644,12 +691,12 @@ void drawStaticGrid(Gfx& gfx) {
   const int grid_r = radar::kGridOuterRadius;
 
   gfx.fillScreen(radar::kColorBackground);
-  drawRings(cx, cy, grid_r);
   drawCrosshairs(cx, cy, grid_r, radar::kColorGrid);
+  drawCardinalLabels();
+  drawRings(cx, cy, grid_r);
   initPalette();
   runway::drawLargeAirportRunways(gfx);
   drawCenterDot(cx, cy);
-  drawCardinalLabels();
   drawScaleLabel(cx, cy, grid_r);
   gfx.setTextDatum(textdatum_t::top_left);
 }
